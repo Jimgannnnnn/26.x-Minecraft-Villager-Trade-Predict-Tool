@@ -1531,7 +1531,7 @@ class TradeExportApp:
                     names = sorted(ENCHANTMENT_CN.get(n, n) for n in result)
                     ebv.set(", ".join(names[:3]) + ("..." if len(names) > 3 else ""))
                 self._apply_rule_filter()
-            EnchantmentFilterPopup(self, rd["ench_selected"], on_confirm=_on_confirm)
+            EnchantmentFilterPopup(self.root, rd["ench_selected"], on_confirm=_on_confirm)
 
         ttk.Button(rule_frame, textvariable=ench_btn_var,
                    command=_open_ench_popup, width=18).pack(side="left", padx=2)
@@ -1632,7 +1632,7 @@ class TradeExportApp:
                     names = sorted(ENCHANTMENT_CN.get(n, n) for n in result)
                     ebv.set(", ".join(names[:3]) + ("..." if len(names) > 3 else ""))
                 self._apply_rule_filter()
-            EnchantmentFilterPopup(self, rd.get("ench_selected", set()), on_confirm=_on_confirm)
+            EnchantmentFilterPopup(self.root, rd.get("ench_selected", set()), on_confirm=_on_confirm)
 
         ttk.Button(rule_frame, textvariable=ench_btn_var,
                    command=_open_ench_popup, width=18).pack(side="left", padx=2)
@@ -1658,6 +1658,40 @@ class TradeExportApp:
 
         rule_frame.config(text=f"规则 {rule_idx + 1}")
         self.filter_rules.append(rule_data)
+
+    def _get_theoretical_price_range(self, row):
+        """返回交易的理论价格范围 (min, max)，基于附魔书公式或装备等级范围。"""
+        row_type = row[3]
+
+        if row_type == "附魔书":
+            # row[5] = enchantment English name, row[6] = level, row[8] = treasure
+            try:
+                level = int(row[6])
+            except (ValueError, TypeError):
+                level = 1
+            is_treasure = row[8] == "是"
+
+            # cost = 2 + nextInt(5 + level * 10) + 3 * level
+            # Min: nextInt returns 0; Max: nextInt returns (5+level*10 - 1) = 4 + 10*level
+            min_cost_raw = 2 + 3 * level
+            max_cost_raw = 2 + (4 + 10 * level) + 3 * level  # = 6 + 13*level
+            if is_treasure:
+                min_cost_raw *= 2
+                max_cost_raw *= 2
+            min_cost = max(1, min(64, min_cost_raw))
+            max_cost = max(1, min(64, max_cost_raw))
+            return min_cost, max_cost
+
+        if row_type == "附魔装备":
+            # row[4] = item name (without minecraft: prefix), cost = enchant level
+            item_name = str(row[4]) if row[4] else ""
+            item_full = f"minecraft:{item_name}"
+            for params in ENCHANTED_EQUIPMENT_PARAMS.values():
+                if params[0] == item_full:
+                    return params[1], params[2]
+            return 5, 19  # default
+
+        return None, None
 
     def _apply_rule_filter(self):
         """应用规则式筛选。"""
@@ -1723,16 +1757,12 @@ class TradeExportApp:
                     if rule_price.startswith("--") or rule_price == "":
                         continue
                     if "%" in rule_price:
-                        # 百分比模式：最低+(最高-最低)×百分比
+                        # 百分比模式：基于理论价格范围（非预览数据）
                         pct = int(rule_price.replace("%", ""))
-                        prices_in_data = [int(r[7]) for r in self.current_data
-                                          if str(r[3]) == row_type and str(r[4]) == d1
-                                          and self._safe_int(r[7]) is not None]
-                        if not prices_in_data:
+                        theo_min, theo_max = self._get_theoretical_price_range(row)
+                        if theo_min is None:
                             continue
-                        p_min = min(prices_in_data)
-                        p_max = max(prices_in_data)
-                        threshold = p_min + (p_max - p_min) * pct / 100
+                        threshold = theo_min + (theo_max - theo_min) * pct / 100
                         if row_price > threshold:
                             continue
                     elif rule_price.isdigit():
