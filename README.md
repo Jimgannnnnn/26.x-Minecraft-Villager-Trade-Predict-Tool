@@ -30,12 +30,6 @@ A seed-based villager trade prediction tool for Minecraft 26.1+.
   - Price filter supports percentage-based thresholds
 - **Enchantment Conflict Detection**: Incompatible enchantments (e.g., Fortune + Silk Touch, Protection variants, Riptide + Channeling/Loyalty) are mutually exclusive in the selector
 
-### CLI (C)
-
-- Lightweight native executable (~150 KB)
-- Same seed derivation and trade simulation logic as the Python version
-- Windows GUI with list view, type/price/keyword filtering, and CSV export
-
 ## Supported Versions
 
 | Version | Status    |
@@ -46,15 +40,8 @@ A seed-based villager trade prediction tool for Minecraft 26.1+.
 
 ## Requirements
 
-### Python Version
-
 - Python 3.10+
 - tkinter (included with standard Python distributions)
-
-### C Version
-
-- GCC (MinGW-w64) or MSVC
-- Windows SDK
 
 ## Installation
 
@@ -74,31 +61,16 @@ cd versions/py
 build_exe.bat
 ```
 
-**C:**
-
-```bash
-cd versions/c
-build_exe.bat
-```
-
 ## Project Structure
 
 ```
 versions/
-├── py/
-│   ├── build_exe.bat
-│   └── src/
-│       ├── trade_export_gui.py        # GUI application
-│       ├── villager_trade_predictor.py # Core prediction engine
-│       └── trade_export_data.py       # Trade data definitions
-└── c/
+└── py/
     ├── build_exe.bat
-    ├── main_gui.c                     # Windows GUI
-    ├── villager_trade.c               # Core prediction engine
-    ├── villager_trade.h
-    ├── trade_data.h                   # Auto-generated trade data
-    ├── xoroshiro128pp.c/h             # Xoroshiro128++ PRNG
-    └── md5.c/h                        # MD5 hash for seed derivation
+    └── src/
+        ├── trade_export_gui.py        # GUI application
+        ├── villager_trade_predictor.py # Core prediction engine
+        └── trade_export_data.py       # Trade data definitions
 ```
 
 ## License
