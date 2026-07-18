@@ -251,78 +251,6 @@ def trade_to_csv_row(t: dict, offset: int, level: int) -> list:
 
 
 # ============================================================
-# 附魔筛选弹窗（多选复选框，不限于当前预览数据）
-# ============================================================
-class EnchantmentFilterPopup(tk.Toplevel):
-    """用于筛选规则中的附魔多选复选框弹窗。"""
-    def __init__(self, parent, selected: set, on_confirm=None):
-        super().__init__(parent)
-        self.title("选择附魔筛选")
-        self.geometry("340x420")
-        self.resizable(False, False)
-        self.result = selected.copy()  # set of enchantment names
-        self._on_confirm = on_confirm
-        self.transient(parent)
-        self.grab_set()
-
-        # 全选/全不选
-        top_frame = ttk.Frame(self)
-        top_frame.pack(fill="x", padx=5, pady=5)
-        ttk.Button(top_frame, text="全选", command=self._select_all).pack(side="left", padx=2)
-        ttk.Button(top_frame, text="全不选", command=self._deselect_all).pack(side="left", padx=2)
-        ttk.Label(top_frame, text="(共{}个)".format(len(self.result)),
-                  foreground="gray", font=("", 8)).pack(side="right")
-
-        # 可滚动画布
-        list_container = ttk.Frame(self)
-        list_container.pack(fill="both", expand=True, padx=5)
-
-        canvas = tk.Canvas(list_container, width=310)
-        scrollbar = ttk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
-        self._inner = ttk.Frame(canvas)
-        self._inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        self._win = canvas.create_window((0, 0), window=self._inner, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig(self._win, width=e.width))
-
-        self._check_vars = {}  # name -> tk.BooleanVar
-        # 从 TRADEABLE_ENCHANTMENTS 构建完整列表（附魔书+附魔装备共同池）
-        for name, max_lv in TRADEABLE_ENCHANTMENTS:
-            cn = ENCHANTMENT_CN.get(name, name)
-            row = ttk.Frame(self._inner)
-            row.pack(fill="x", pady=1)
-            var = tk.BooleanVar(value=(name in selected))
-            cb = ttk.Checkbutton(row, text=f"{cn} (1-{max_lv})", variable=var)
-            cb.pack(anchor="w", padx=5)
-            self._check_vars[name] = var
-
-        # 底部按钮
-        btn_frame = ttk.Frame(self)
-        btn_frame.pack(fill="x", pady=8)
-        ttk.Button(btn_frame, text="确定", command=self._confirm).pack(side="right", padx=10)
-        ttk.Button(btn_frame, text="取消", command=self._cancel).pack(side="right")
-
-    def _select_all(self):
-        for var in self._check_vars.values():
-            var.set(True)
-
-    def _deselect_all(self):
-        for var in self._check_vars.values():
-            var.set(False)
-
-    def _confirm(self):
-        self.result = {name for name, var in self._check_vars.items() if var.get()}
-        if self._on_confirm:
-            self._on_confirm(self.result)
-        self.destroy()
-
-    def _cancel(self):
-        self.destroy()
-
-
-# ============================================================
 # 附魔选择弹窗
 # ============================================================
 class EnchantmentSelector(tk.Toplevel):
@@ -1444,7 +1372,7 @@ class TradeExportApp:
         for rule in self.filter_rules:
             w = rule["widgets"]
             w["type_combo"]["values"] = self._filter_type_vals
-            # 附魔按钮不需要刷新选项（始终展示完整列表）
+            w["ench_combo"]["values"] = self._filter_ench_vals
             w["lv_combo"]["values"] = self._filter_lv_vals
             w["price_combo"]["values"] = self._filter_price_vals
 
@@ -1518,24 +1446,13 @@ class TradeExportApp:
         w["type_combo"] = type_combo
 
         ttk.Label(rule_frame, text="附魔:").pack(side="left", padx=(5, 0))
-        ench_selected = set()  # 初始为空=全部
-        ench_btn_var = tk.StringVar(value="全部")
-        rule_data["ench_selected"] = ench_selected
-
-        def _open_ench_popup(rd=rule_data, ebv=ench_btn_var):
-            def _on_confirm(result):
-                rd["ench_selected"] = result
-                if not result:
-                    ebv.set("全部")
-                else:
-                    names = sorted(ENCHANTMENT_CN.get(n, n) for n in result)
-                    ebv.set(", ".join(names[:3]) + ("..." if len(names) > 3 else ""))
-                self._apply_rule_filter()
-            EnchantmentFilterPopup(self.root, rd["ench_selected"], on_confirm=_on_confirm)
-
-        ttk.Button(rule_frame, textvariable=ench_btn_var,
-                   command=_open_ench_popup, width=18).pack(side="left", padx=2)
-        w["ench_btn_var"] = ench_btn_var
+        ench_var = tk.StringVar(value="全部")
+        ench_combo = ttk.Combobox(rule_frame, textvariable=ench_var,
+                                  values=self._filter_ench_vals, width=14, state="readonly")
+        ench_combo.pack(side="left", padx=2)
+        ench_combo.bind("<<ComboboxSelected>>", lambda e: self._on_rule_ench_change(rule_data))
+        w["ench_var"] = ench_var
+        w["ench_combo"] = ench_combo
 
         ttk.Label(rule_frame, text="等级:").pack(side="left", padx=(5, 0))
         lv_var = tk.StringVar(value="任意")
@@ -1589,6 +1506,9 @@ class TradeExportApp:
         self.filter_rules = []
         for rule_data in old_rules:
             self._add_rule_from_data(rule_data)
+        # 强制刷新布局，使父容器高度随规则数量自适应
+        self.filter_rules_frame.update_idletasks()
+        self.filter_rules_frame.master.update_idletasks()
 
     def _add_rule_from_data(self, rule_data: dict):
         """从 rule_data 重建一条规则的 UI。"""
@@ -1610,32 +1530,11 @@ class TradeExportApp:
         w["type_combo"] = type_combo
 
         ttk.Label(rule_frame, text="附魔:").pack(side="left", padx=(5, 0))
-        ench_selected = rule_data.get("ench_selected", set())
-        ench_btn_var = w.get("ench_btn_var")
-        if ench_btn_var is None:
-            ench_btn_var = tk.StringVar(value="全部")
-            w["ench_btn_var"] = ench_btn_var
-        else:
-            # 恢复显示文字
-            if not ench_selected:
-                ench_btn_var.set("全部")
-            else:
-                names = sorted(ENCHANTMENT_CN.get(n, n) for n in ench_selected)
-                ench_btn_var.set(", ".join(names[:3]) + ("..." if len(names) > 3 else ""))
-
-        def _open_ench_popup(rd=rule_data, ebv=ench_btn_var):
-            def _on_confirm(result):
-                rd["ench_selected"] = result
-                if not result:
-                    ebv.set("全部")
-                else:
-                    names = sorted(ENCHANTMENT_CN.get(n, n) for n in result)
-                    ebv.set(", ".join(names[:3]) + ("..." if len(names) > 3 else ""))
-                self._apply_rule_filter()
-            EnchantmentFilterPopup(self.root, rd.get("ench_selected", set()), on_confirm=_on_confirm)
-
-        ttk.Button(rule_frame, textvariable=ench_btn_var,
-                   command=_open_ench_popup, width=18).pack(side="left", padx=2)
+        ench_combo = ttk.Combobox(rule_frame, textvariable=w["ench_var"],
+                                  values=self._filter_ench_vals, width=14, state="readonly")
+        ench_combo.pack(side="left", padx=2)
+        ench_combo.bind("<<ComboboxSelected>>", lambda e: self._on_rule_ench_change(rule_data))
+        w["ench_combo"] = ench_combo
 
         ttk.Label(rule_frame, text="等级:").pack(side="left", padx=(5, 0))
         lv_combo = ttk.Combobox(rule_frame, textvariable=w["lv_var"],
@@ -1729,20 +1628,13 @@ class TradeExportApp:
                 if rule_type != "全部" and row_type != rule_type:
                     continue
 
-                # 附魔条件（复选框集合）
-                ench_selected = rule.get("ench_selected", set())
-                if ench_selected:
+                # 附魔条件
+                rule_ench = w["ench_var"].get()
+                if rule_ench != "全部":
                     if row_type not in ("附魔书", "附魔装备"):
                         continue
-                    # row[4]是附魔书名称/装备物品名, row[5]是附魔装备的附魔串
-                    row_ench_set = set()
-                    if d1:
-                        row_ench_set.add(d1)
-                    for part in d2.split(";"):
-                        part = part.strip()
-                        if part:
-                            row_ench_set.add(part)
-                    if not row_ench_set & ench_selected:
+                    # d1=附魔书中文名/装备物品, d2=装备附魔串（分号分隔）
+                    if d1 != rule_ench and rule_ench not in d2:
                         continue
 
                 # 等级条件
