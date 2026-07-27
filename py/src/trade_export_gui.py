@@ -1303,7 +1303,7 @@ class TradeExportApp:
             for t in trades:
                 row = trade_to_csv_row(t, off, level)
                 self.current_data.append(row)
-            self.predictor._consume_trade_generation(rng, prof, level)
+            # simulate_trades already advances RNG; no need for extra _consume_trade_generation
 
         self.filtered_data = list(self.current_data)
         self._populate_filter_options()
