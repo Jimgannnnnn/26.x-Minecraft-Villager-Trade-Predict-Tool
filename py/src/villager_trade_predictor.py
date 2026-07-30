@@ -487,9 +487,9 @@ def _enchantment_level_range(ench_name: str, ench_level: int) -> Tuple[int, int]
 ITEM_ENCHANTMENT_COMPAT = {
     "minecraft:iron_sword": {"sharpness", "smite", "bane_of_arthropods", "knockback", "fire_aspect", "looting", "sweeping_edge", "unbreaking"},
     "minecraft:diamond_sword": {"sharpness", "smite", "bane_of_arthropods", "knockback", "fire_aspect", "looting", "sweeping_edge", "unbreaking"},
-    "minecraft:iron_axe": {"sharpness", "smite", "bane_of_arthropods", "efficiency", "fortune", "silk_touch", "unbreaking"},
-    "minecraft:diamond_axe": {"sharpness", "smite", "bane_of_arthropods", "efficiency", "fortune", "silk_touch", "unbreaking"},
-    "minecraft:stone_axe": {"sharpness", "smite", "bane_of_arthropods", "efficiency", "fortune", "silk_touch", "unbreaking"},
+    "minecraft:iron_axe": {"efficiency", "fortune", "silk_touch", "unbreaking"},
+    "minecraft:diamond_axe": {"efficiency", "fortune", "silk_touch", "unbreaking"},
+    "minecraft:stone_axe": {"efficiency", "fortune", "silk_touch", "unbreaking"},
     "minecraft:iron_pickaxe": {"efficiency", "fortune", "silk_touch", "unbreaking"},
     "minecraft:diamond_pickaxe": {"efficiency", "fortune", "silk_touch", "unbreaking"},
     "minecraft:stone_pickaxe": {"efficiency", "fortune", "silk_touch", "unbreaking"},
@@ -510,7 +510,9 @@ ITEM_ENCHANTMENT_COMPAT = {
 
 def simulate_enchanted_equipment(rng: XoroshiroRandomSource, item_id: str,
                                   levels_min: int = 5, levels_max: int = 19,
-                                  include_additional_cost: bool = True) -> dict:
+                                  include_additional_cost: bool = True,
+                                  base_cost: int = 0,
+                                  compat_override: Optional[set] = None) -> dict:
     """
     Simulate enchant_with_levels for equipment trades.
     
@@ -529,7 +531,7 @@ def simulate_enchanted_equipment(rng: XoroshiroRandomSource, item_id: str,
     if enchantability <= 0:
         return {"type": "enchanted_equipment", "item": item_id,
                 "enchant_level_cost": level, "enchantments": [],
-                "additional_cost": level, "final_cost": level}
+                "additional_cost": level, "final_cost": base_cost + level}
     
     # Modified level
     modified_level = level + 1 + rng.next_int(enchantability // 4 + 1) + rng.next_int(enchantability // 4 + 1)
@@ -542,6 +544,8 @@ def simulate_enchanted_equipment(rng: XoroshiroRandomSource, item_id: str,
     # where minEnchantability <= modified_level <= maxEnchantability
     # Also filter by item compatibility
     item_compat = ITEM_ENCHANTMENT_COMPAT.get(item_id, set())
+    if compat_override is not None:
+        item_compat = compat_override
     available = []
     for ench_name, max_ench_level in ON_TRADED_EQUIPMENT_ENCHANTMENTS:
         if ench_name not in item_compat:
@@ -555,7 +559,7 @@ def simulate_enchanted_equipment(rng: XoroshiroRandomSource, item_id: str,
     if not available:
         return {"type": "enchanted_equipment", "item": item_id,
                 "enchant_level_cost": level, "enchantments": [],
-                "additional_cost": level, "final_cost": level}
+                "additional_cost": level, "final_cost": base_cost + level}
     
     selected = []
     
@@ -605,8 +609,9 @@ def simulate_enchanted_equipment(rng: XoroshiroRandomSource, item_id: str,
         "item": item_id,
         "enchant_level_cost": level,
         "enchantments": selected,
+        "base_cost": base_cost,
         "additional_cost": additional_cost,
-        "final_cost": additional_cost,
+        "final_cost": base_cost + additional_cost,
     }
 
 
@@ -1280,37 +1285,40 @@ ALL_TRADE_DATA = {
     },
 }
 
-# Enchanted equipment trade details: (item_id, levels_min, levels_max)
+# Enchanted equipment trade details: (item_id, levels_min, levels_max, base_emerald_cost)
 # From trade_data_dump.py - extracted from actual jar JSON
 ENCHANTED_EQUIPMENT_PARAMS = {
     # armorer level 4
-    "minecraft:armorer/4/emerald_enchanted_diamond_leggings": ("minecraft:diamond_leggings", 5, 19),
-    "minecraft:armorer/4/emerald_enchanted_diamond_boots": ("minecraft:diamond_boots", 5, 19),
+    "minecraft:armorer/4/emerald_enchanted_diamond_leggings": ("minecraft:diamond_leggings", 5, 19, 14),
+    "minecraft:armorer/4/emerald_enchanted_diamond_boots": ("minecraft:diamond_boots", 5, 19, 8),
     # armorer level 5
-    "minecraft:armorer/5/emerald_enchanted_diamond_helmet": ("minecraft:diamond_helmet", 5, 19),
-    "minecraft:armorer/5/emerald_enchanted_diamond_chestplate": ("minecraft:diamond_chestplate", 5, 19),
+    "minecraft:armorer/5/emerald_enchanted_diamond_helmet": ("minecraft:diamond_helmet", 5, 19, 8),
+    "minecraft:armorer/5/emerald_enchanted_diamond_chestplate": ("minecraft:diamond_chestplate", 5, 19, 16),
     # fisherman level 3
-    "minecraft:fisherman/3/emerald_enchanted_fishing_rod": ("minecraft:fishing_rod", 5, 19),
+    "minecraft:fisherman/3/emerald_enchanted_fishing_rod": ("minecraft:fishing_rod", 5, 19, 3),
     # fletcher level 4
-    "minecraft:fletcher/4/emerald_enchanted_bow": ("minecraft:bow", 5, 19),
+    "minecraft:fletcher/4/emerald_enchanted_bow": ("minecraft:bow", 5, 19, 2),
     # fletcher level 5
-    "minecraft:fletcher/5/emerald_enchanted_crossbow": ("minecraft:crossbow", 5, 19),
+    "minecraft:fletcher/5/emerald_enchanted_crossbow": ("minecraft:crossbow", 5, 19, 3),
     # toolsmith level 3
-    "minecraft:toolsmith/3/emerald_enchanted_iron_axe": ("minecraft:iron_axe", 5, 19),
-    "minecraft:toolsmith/3/emerald_enchanted_iron_shovel": ("minecraft:iron_shovel", 5, 19),
-    "minecraft:toolsmith/3/emerald_enchanted_iron_pickaxe": ("minecraft:iron_pickaxe", 5, 19),
-    # toolsmith level 4
-    "minecraft:toolsmith/4/emerald_enchanted_diamond_axe": ("minecraft:diamond_axe", 5, 19),
-    "minecraft:toolsmith/4/emerald_enchanted_diamond_shovel": ("minecraft:diamond_shovel", 5, 19),
+    "minecraft:toolsmith/3/emerald_enchanted_iron_axe": ("minecraft:iron_axe", 5, 19, 1),
+    "minecraft:toolsmith/3/emerald_enchanted_iron_shovel": ("minecraft:iron_shovel", 5, 19, 2),
+    "minecraft:toolsmith/3/emerald_enchanted_iron_pickaxe": ("minecraft:iron_pickaxe", 5, 19, 3),
+    # toolsmith level 4 (axes are tool-only)
+    "minecraft:toolsmith/4/emerald_enchanted_diamond_axe": ("minecraft:diamond_axe", 5, 19, 12),
+    "minecraft:toolsmith/4/emerald_enchanted_diamond_shovel": ("minecraft:diamond_shovel", 5, 19, 5),
     # toolsmith level 5
-    "minecraft:toolsmith/5/emerald_enchanted_diamond_pickaxe": ("minecraft:diamond_pickaxe", 5, 19),
+    "minecraft:toolsmith/5/emerald_enchanted_diamond_pickaxe": ("minecraft:diamond_pickaxe", 5, 19, 13),
     # weaponsmith level 1
-    "minecraft:weaponsmith/1/emerald_enchanted_iron_sword": ("minecraft:iron_sword", 5, 19),
-    # weaponsmith level 4
-    "minecraft:weaponsmith/4/emerald_enchanted_diamond_axe": ("minecraft:diamond_axe", 5, 19),
+    "minecraft:weaponsmith/1/emerald_enchanted_iron_sword": ("minecraft:iron_sword", 5, 19, 2),
+    # weaponsmith level 4 (axes from weaponsmith get weapon enchants)
+    "minecraft:weaponsmith/4/emerald_enchanted_diamond_axe": ("minecraft:diamond_axe", 5, 19, 12),
     # weaponsmith level 5
-    "minecraft:weaponsmith/5/emerald_enchanted_diamond_sword": ("minecraft:diamond_sword", 5, 19),
+    "minecraft:weaponsmith/5/emerald_enchanted_diamond_sword": ("minecraft:diamond_sword", 5, 19, 8),
 }
+
+# Weapon enchantments available on axes from weaponsmith (but not toolsmith)
+WEAPON_AXE_ENCHANTS = {"sharpness", "smite", "bane_of_arthropods", "unbreaking"}
 
 
 # ============================================================
@@ -1549,8 +1557,11 @@ class VillagerTradePredictor:
         elif is_enchanted_equipment_entry(entry_name):
             params = ENCHANTED_EQUIPMENT_PARAMS.get(entry_name)
             if params:
-                item_id, lmin, lmax = params
-                equip = simulate_enchanted_equipment(rng, item_id, lmin, lmax, include_additional_cost=True)
+                item_id, lmin, lmax, base_cost = params
+                extra = WEAPON_AXE_ENCHANTS if "weaponsmith" in entry_name and "axe" in entry_name else None
+                equip = simulate_enchanted_equipment(rng, item_id, lmin, lmax,
+                                                     include_additional_cost=True, base_cost=base_cost,
+                                                     compat_override=extra)
             else:
                 equip = simulate_enchanted_equipment(rng, "minecraft:iron_sword", 5, 19, include_additional_cost=True)
             return {"entry": entry_name, **equip}
@@ -1583,8 +1594,11 @@ class VillagerTradePredictor:
             elif is_enchanted_equipment_entry(picked):
                 params = ENCHANTED_EQUIPMENT_PARAMS.get(picked)
                 if params:
-                    item_id, lmin, lmax = params
-                    simulate_enchanted_equipment(rng, item_id, lmin, lmax, include_additional_cost=True)
+                    item_id, lmin, lmax, base_cost = params
+                    extra = WEAPON_AXE_ENCHANTS if "weaponsmith" in picked and "axe" in picked else None
+                    simulate_enchanted_equipment(rng, item_id, lmin, lmax,
+                                                 include_additional_cost=True, base_cost=base_cost,
+                                                 compat_override=extra)
                 else:
                     simulate_enchanted_equipment(rng, "minecraft:iron_sword", 5, 19, include_additional_cost=True)
             elif is_suspicious_stew_entry(picked):
